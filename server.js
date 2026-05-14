@@ -14,6 +14,10 @@ io.on("connection", (socket) => {
     socket.join(room);
     socket.room = room;
     socket.username = username;
+    socket.state = {
+      muted: false,
+      deafened: false
+    };
 
     const users = [];
     const clients = io.sockets.adapter.rooms.get(room);
@@ -24,7 +28,11 @@ io.on("connection", (socket) => {
           const s = io.sockets.sockets.get(id);
           users.push({
             id,
-            username: s?.username || "Kullanıcı"
+            username: s?.username || "Kullanıcı",
+            state: s?.state || {
+              muted: false,
+              deafened: false
+            }
           });
         }
       });
@@ -34,8 +42,23 @@ io.on("connection", (socket) => {
 
     socket.to(room).emit("user-joined", {
       id: socket.id,
-      username
+      username,
+      state: socket.state
     });
+  });
+
+  socket.on("user-state", ({ state }) => {
+    socket.state = {
+      muted: !!state?.muted,
+      deafened: !!state?.deafened
+    };
+
+    if (socket.room) {
+      socket.to(socket.room).emit("user-state", {
+        id: socket.id,
+        state: socket.state
+      });
+    }
   });
 
   socket.on("offer", ({ to, offer, kind }) => {
