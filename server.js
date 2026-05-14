@@ -16,15 +16,15 @@ io.on("connection", (socket) => {
     socket.username = username;
 
     const users = [];
-
     const clients = io.sockets.adapter.rooms.get(room);
+
     if (clients) {
       clients.forEach((id) => {
         if (id !== socket.id) {
-          const userSocket = io.sockets.sockets.get(id);
+          const s = io.sockets.sockets.get(id);
           users.push({
             id,
-            username: userSocket?.username || "Kullanıcı"
+            username: s?.username || "Kullanıcı"
           });
         }
       });
@@ -38,25 +38,36 @@ io.on("connection", (socket) => {
     });
   });
 
-  socket.on("offer", ({ to, offer }) => {
+  socket.on("offer", ({ to, offer, kind }) => {
     io.to(to).emit("offer", {
       from: socket.id,
-      offer
+      offer,
+      kind
     });
   });
 
-  socket.on("answer", ({ to, answer }) => {
+  socket.on("answer", ({ to, answer, kind }) => {
     io.to(to).emit("answer", {
       from: socket.id,
-      answer
+      answer,
+      kind
     });
   });
 
-  socket.on("ice-candidate", ({ to, candidate }) => {
+  socket.on("ice-candidate", ({ to, candidate, kind }) => {
     io.to(to).emit("ice-candidate", {
       from: socket.id,
-      candidate
+      candidate,
+      kind
     });
+  });
+
+  socket.on("screen-stopped", () => {
+    if (socket.room) {
+      socket.to(socket.room).emit("screen-stopped", {
+        from: socket.id
+      });
+    }
   });
 
   socket.on("disconnect", () => {
