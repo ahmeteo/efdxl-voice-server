@@ -32,7 +32,8 @@ io.on("connection", (socket) => {
             state: s?.state || {
               muted: false,
               deafened: false
-            }
+            },
+            screenSharing: !!s?.screenSharing
           });
         }
       });
@@ -43,7 +44,8 @@ io.on("connection", (socket) => {
     socket.to(room).emit("user-joined", {
       id: socket.id,
       username,
-      state: socket.state
+      state: socket.state,
+      screenSharing: !!socket.screenSharing
     });
   });
 
@@ -59,6 +61,31 @@ io.on("connection", (socket) => {
         state: socket.state
       });
     }
+  });
+
+  socket.on("screen-started", ({ username, to }) => {
+    socket.screenSharing = true;
+
+    if (to) {
+      io.to(to).emit("screen-started", {
+        from: socket.id,
+        username: username || socket.username || "Kullanıcı"
+      });
+      return;
+    }
+
+    if (socket.room) {
+      socket.to(socket.room).emit("screen-started", {
+        from: socket.id,
+        username: username || socket.username || "Kullanıcı"
+      });
+    }
+  });
+
+  socket.on("screen-request", ({ to }) => {
+    io.to(to).emit("screen-request", {
+      from: socket.id
+    });
   });
 
   socket.on("offer", ({ to, offer, kind }) => {
@@ -86,6 +113,8 @@ io.on("connection", (socket) => {
   });
 
   socket.on("screen-stopped", () => {
+    socket.screenSharing = false;
+
     if (socket.room) {
       socket.to(socket.room).emit("screen-stopped", {
         from: socket.id
