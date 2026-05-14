@@ -10,11 +10,12 @@ const io = new Server(server, {
 });
 
 io.on("connection", (socket) => {
-  socket.on("join-room", ({ room, username }) => {
+  socket.on("join-room", ({ room, username, photo }) => {
     socket.join(room);
     socket.room = room;
-    socket.username = username;
-    socket.state = {
+    socket.username = username || "Kullanıcı";
+    socket.photo = photo || "";
+    socket.state = socket.state || {
       muted: false,
       deafened: false
     };
@@ -29,6 +30,7 @@ io.on("connection", (socket) => {
           users.push({
             id,
             username: s?.username || "Kullanıcı",
+            photo: s?.photo || "",
             state: s?.state || {
               muted: false,
               deafened: false
@@ -43,10 +45,24 @@ io.on("connection", (socket) => {
 
     socket.to(room).emit("user-joined", {
       id: socket.id,
-      username,
+      username: socket.username,
+      photo: socket.photo,
       state: socket.state,
       screenSharing: !!socket.screenSharing
     });
+  });
+
+  socket.on("leave-room", () => {
+    if (!socket.room) return;
+
+    const oldRoom = socket.room;
+
+    socket.to(oldRoom).emit("user-left", socket.id);
+
+    socket.leave(oldRoom);
+
+    socket.room = null;
+    socket.screenSharing = false;
   });
 
   socket.on("user-state", ({ state }) => {
