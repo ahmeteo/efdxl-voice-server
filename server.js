@@ -12,15 +12,34 @@ const io = new Server(server, {
   }
 });
 
-function getRoomClients(room) {
+/*
+  EFDXL Voice server.js
+  Bu sürüm eski/root kanal mantığına uygundur.
+  Sunucu/Discord server sistemi YOK.
+  Sadece ses odası roomId üzerinden çalışır.
+
+  Client tarafındaki eventler:
+  - join-room
+  - leave-room
+  - user-state
+  - screen-started
+  - screen-request
+  - offer
+  - answer
+  - ice-candidate
+  - screen-stopped
+*/
+
+function getRoomUsers(room, excludeSocketId = null) {
   const users = [];
   const clients = io.sockets.adapter.rooms.get(room);
 
   if (!clients) return users;
 
   clients.forEach((id) => {
-    const s = io.sockets.sockets.get(id);
+    if (excludeSocketId && id === excludeSocketId) return;
 
+    const s = io.sockets.sockets.get(id);
     if (!s) return;
 
     users.push({
@@ -52,6 +71,10 @@ function leaveCurrentRoom(socket) {
 }
 
 io.on("connection", (socket) => {
+  socket.room = null;
+  socket.username = "Kullanıcı";
+  socket.photo = "";
+  socket.screenSharing = false;
   socket.state = {
     muted: false,
     deafened: false
@@ -60,16 +83,28 @@ io.on("connection", (socket) => {
   socket.on("join-room", ({ room, username, photo }) => {
     if (!room) return;
 
-    // Aynı socket başka odadaysa önce temiz çıkış yaptır.
-    if (socket.room && socket.room !== room) {
-      leaveCurrentRoom(socket);
-    }
-
-    // Aynı odaya tekrar join olursa duplicate state oluşmasın.
+    /*
+      Client kanal listesi render olunca aynı odaya tekrar join-room gönderebiliyor.
+      Aynı odaya tekrar gelirse user-left/user-joined basmıyoruz.
+      Böylece ses bağlantısı gereksiz resetlenmez.
+    */
     if (socket.room === room) {
       socket.username = username || socket.username || "Kullanıcı";
       socket.photo = photo || socket.photo || "";
+
+      socket.to(room).emit("user-state", {
+        id: socket.id,
+        state: socket.state
+      });
+
       return;
+    }
+
+    /*
+      Socket başka odadaysa önce eski odadan temiz çıkar.
+    */
+    if (socket.room && socket.room !== room) {
+      leaveCurrentRoom(socket);
     }
 
     socket.join(room);
@@ -84,8 +119,7 @@ io.on("connection", (socket) => {
       deafened: false
     };
 
-    const users = getRoomClients(room)
-      .filter((u) => u.id !== socket.id);
+    const users = getRoomUsers(room, socket.id);
 
     socket.emit("existing-users", users);
 
@@ -154,53 +188,38 @@ io.on("connection", (socket) => {
   });
 
   /*
-    WebRTC SIGNAL RELAY
-    Burada sunucu/Discord mantığı yok.
-    Sadece socket id -> socket id sinyal taşıyoruz.
-    room bilgisi client tarafında kontrol için geri gönderiliyor.
+    WebRTC sinyal aktarıcıları.
+    Bu client kodu offer/answer/ice için room parametresi göndermiyor.
+    O yüzden burada sadece eski yapıya uygun şekilde from, offer/answer/candidate, kind dönüyoruz.
   */
 
-  socket.on("voice-offer-request", ({ to, room, fromName, photo }) => {
-    if (!to) return;
-
-    io.to(to).emit("voice-offer-request", {
-      from: socket.id,
-      room: room || socket.room || "",
-      fromName: fromName || socket.username || "Kullanıcı",
-      photo: photo || socket.photo || ""
-    });
-  });
-
-  socket.on("offer", ({ to, offer, kind, room }) => {
+  socket.on("offer", ({ to, offer, kind }) => {
     if (!to || !offer) return;
 
     io.to(to).emit("offer", {
       from: socket.id,
       offer,
-      kind,
-      room: room || socket.room || ""
+      kind
     });
   });
 
-  socket.on("answer", ({ to, answer, kind, room }) => {
+  socket.on("answer", ({ to, answer, kind }) => {
     if (!to || !answer) return;
 
     io.to(to).emit("answer", {
       from: socket.id,
       answer,
-      kind,
-      room: room || socket.room || ""
+      kind
     });
   });
 
-  socket.on("ice-candidate", ({ to, candidate, kind, room }) => {
+  socket.on("ice-candidate", ({ to, candidate, kind }) => {
     if (!to || !candidate) return;
 
     io.to(to).emit("ice-candidate", {
       from: socket.id,
       candidate,
-      kind,
-      room: room || socket.room || ""
+      kind
     });
   });
 
@@ -210,5 +229,5 @@ io.on("connection", (socket) => {
 });
 
 server.listen(process.env.PORT || 3000, () => {
-  console.log("Server started");
+  console.log("EFDXL Voice server started");
 });
